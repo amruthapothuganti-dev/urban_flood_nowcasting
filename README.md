@@ -1,2 +1,213 @@
 # urban_flood_nowcasting
 Urban Flood Nowcasting System is a smart disaster management platform that combines rainfall intensity, drainage capacity, terrain elevation, and historical flood data to assess hyperlocal urban flood risk. It provides a flood-risk dashboard, zone-level risk assessment, and alerts to support early decision-making and safer urban mobility.
+from flask import Flask, render_template_string, request
+import csv
+import os
+
+app = Flask(name)
+
+DATA_FILE = os.path.join(
+os.path.dirname(file), "sample_zones.csv"
+)
+
+HTML = """
+
+<!DOCTYPE html><html>
+<head>
+    <title>TriForce Flood Nowcasting</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background: #081827;
+            color: #f1f7fa;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 25px;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+        h1 { color: #48d1d2; }
+        .card {
+            background: #123047;
+            padding: 20px;
+            margin: 18px 0;
+            border-radius: 12px;
+        }
+        input {
+            width: 95%;
+            padding: 10px;
+            margin: 8px 0 16px;
+        }
+        button {
+            background: #48d1d2;
+            padding: 12px 20px;
+            border: 0;
+            border-radius: 7px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .High { color: #ff7070; }
+        .Moderate { color: #ffd166; }
+        .Low { color: #63e6a5; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #365064;
+            text-align: left;
+        }
+        .note { color: #b7c9d5; font-size: 13px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>TriForce 🌧️</h1>
+    <h2>Urban Flood Nowcasting System</h2>
+    <p>Rainfall + Drainage + Terrain = Hyperlocal Flood Risk</p><p class="note">
+    DEMO: Uses simulated data and an illustrative risk score.
+    Not an official flood forecast.
+</p>
+
+<div class="card">
+    <h2>Flood Risk Calculator</h2>
+    <form method="POST">
+        <label>Zone or street name</label><br>
+        <input name="zone" value="Sector 12 Underpass" required>
+
+        <label>Rainfall (mm/hour)</label><br>
+        <input type="number" name="rainfall"
+               min="0" max="150" value="70" required>
+
+        <label>Drainage capacity (0-100; higher is better)</label><br>
+        <input type="number" name="drainage"
+               min="0" max="100" value="25" required>
+
+        <label>Terrain risk (0-100; higher is worse)</label><br>
+        <input type="number" name="terrain"
+               min="0" max="100" value="90" required>
+
+        <button type="submit">Predict Flood Risk</button>
+    </form>
+</div>
+
+{% if result %}
+<div class="card">
+    <h2>Prediction for {{ result.zone }}</h2>
+    <h1 class="{{ result.risk }}">
+        {{ result.risk }} Risk — {{ result.score }}/100
+    </h1>
+    <p>{{ result.message }}</p>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Sample Zone Monitoring</h2>
+    <table>
+        <tr>
+            <th>Zone</th>
+            <th>Rainfall</th>
+            <th>Risk score</th>
+            <th>Level</th>
+        </tr>
+        {% for z in zones %}
+        <tr>
+            <td>{{ z.zone }}</td>
+            <td>{{ z.rainfall }} mm/h</td>
+            <td>{{ z.score }}/100</td>
+            <td class="{{ z.risk }}">{{ z.risk }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+</div>
+</body>
+</html>
+"""def calculate_risk(rainfall, drainage, terrain):
+# Demonstration formula, not a validated scientific model.
+score = round(
+(rainfall / 150) * 50
++ ((100 - drainage) / 100) * 30
++ (terrain / 100) * 20
+)
+
+if score >= 65:
+    risk = "High"
+    message = "Avoid the area if possible and check official alerts."
+elif score >= 35:
+    risk = "Moderate"
+    message = "Monitor conditions and use caution."
+else:
+    risk = "Low"
+    message = "Continue monitoring local conditions."
+
+return score, risk, message
+
+def load_zones():
+zones = []
+if not os.path.exists(DATA_FILE):
+return zones
+
+with open(DATA_FILE, newline="", encoding="utf-8") as file:
+    for row in csv.DictReader(file):
+        rainfall = float(row["rainfall"])
+        drainage = float(row["drainage"])
+        terrain = float(row["terrain"])
+
+        score, risk, message = calculate_risk(
+            rainfall, drainage, terrain
+        )
+
+        zones.append({
+            "zone": row["zone"],
+            "rainfall": rainfall,
+            "score": score,
+            "risk": risk
+        })
+
+return zones
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+result = None
+
+if request.method == "POST":
+    try:
+        zone = request.form["zone"][:80]
+        rainfall = float(request.form["rainfall"])
+        drainage = float(request.form["drainage"])
+        terrain = float(request.form["terrain"])
+
+        if not zone.strip():
+            raise ValueError("Enter a zone name.")
+        if not 0 <= rainfall <= 150:
+            raise ValueError("Rainfall must be between 0 and 150.")
+        if not 0 <= drainage <= 100:
+            raise ValueError("Drainage must be between 0 and 100.")
+        if not 0 <= terrain <= 100:
+            raise ValueError("Terrain risk must be between 0 and 100.")
+
+        score, risk, message = calculate_risk(
+            rainfall, drainage, terrain
+        )
+        result = {
+            "zone": zone,
+            "score": score,
+            "risk": risk,
+            "message": message
+        }
+    except ValueError:
+        result = {
+            "zone": "Invalid input",
+            "score": 0,
+            "risk": "Moderate",
+            "message": "Please enter valid numeric values."
+        }
+
+return render_template_string(
+    HTML, result=result, zones=load_zones()
+)
+
+if name == "main":
+app.run(debug=True)
